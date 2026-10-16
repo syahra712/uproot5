@@ -120,6 +120,8 @@ class FSSpecSource(uproot.source.chunk.Source):
         if self.closed:
             raise OSError(f"file {self._file_path!r} is closed")
 
+        # Some backends (e.g. fsspec-xrootd) reject numpy integers.
+        start, stop = int(start), int(stop)
         self._num_requests += 1
         self._num_requested_chunks += 1
         self._num_requested_bytes += stop - start
@@ -171,8 +173,8 @@ class FSSpecSource(uproot.source.chunk.Source):
 
         def submit(request_ranges: list[tuple[int, int]]):
             paths = [self._file_path] * len(request_ranges)
-            starts = [start for start, _ in request_ranges]
-            ends = [stop for _, stop in request_ranges]
+            starts = [int(start) for start, _ in request_ranges]
+            ends = [int(stop) for _, stop in request_ranges]
             if uproot._util.wasm:
                 # Threads can't be spawned in pyodide yet, so we run the function directly
                 # and return a future that is already resolved.
