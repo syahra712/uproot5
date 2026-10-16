@@ -262,6 +262,32 @@ def test_fsspec_memory():
         assert len(data) == 40
 
 
+def test_fsspec_byte_ranges_are_python_ints(monkeypatch):
+    # Some backends, such as fsspec-xrootd, reject numpy integers as offsets.
+    with open(skhep_testdata.data_path("uproot-issue121.root"), "rb") as f:
+        contents = f.read()
+
+    fs = fsspec.filesystem(protocol="memory")
+    fs.store.clear()
+    file_path = "skhep_testdata/uproot-issue121.root"
+    with fs.open(file_path, "wb") as f:
+        f.write(contents)
+
+    memory_fs = type(fs)
+    original_cat_file = memory_fs.cat_file
+
+    def cat_file(self, path, start=None, end=None, **kwargs):
+        assert start is None or type(start) is int
+        assert end is None or type(end) is int
+        return original_cat_file(self, path, start=start, end=end, **kwargs)
+
+    monkeypatch.setattr(memory_fs, "cat_file", cat_file)
+
+    with uproot.open(f"memory://{file_path}") as f:
+        arrays = list(f["Events"].iterate(["MET_pt"], step_size="1 MB", library="np"))
+        assert sum(len(x["MET_pt"]) for x in arrays) == 40
+
+
 def test_fsspec_tar(tmp_path):
     import tarfile
     import io
